@@ -8,6 +8,7 @@ from Crypto.Util.Padding import pad
 import base64
 import sys
 
+''' GME Requests ID and their respective AES keys '''
 REQUESTS_KEYS = {
 	"MfZyu1q9" : b"EmcshnQoDr20TZz1",
 	"cTZ3W2JG" : b"ScJx6ywWEb0A3njT",
@@ -17,18 +18,39 @@ REQUESTS_KEYS = {
 	"2o4axPIC" : b"EoYuZ2nbImhCU1c0",
 }
 
-def pkcs5_pad(s):
+'''
+	Pads a string with PKCS5 padding
+	:param s: Stirng to pad
+	:return: Padded string
+'''
+def pkcs5_pad(s: str) -> str:
 	return s + (32 - len(s) % 32) * chr(32 - len(s) % 32)
 
-def bfdc(text):
+'''
+	Decodes a SREE object content
+	:param str: String to decode
+	:return: Decrypted string
+'''
+def sree_decode(text: str) -> str:
 	cipher = AES.new(b"7410958164354871", AES.MODE_CBC, iv=b"Bfw4encrypedPass")
 	return cipher.decrypt(base64.b64decode(text))
 
-def bfec(text):
+'''
+	Encodes a content for an SREE response
+	:param str: String to encode
+	:return: Encrypted string
+'''
+def sree_encode(text: str) -> str:
 	cipher = AES.new(b"7410958164354871", AES.MODE_CBC, iv=b"Bfw4encrypedPass")
 	return base64.b64encode(cipher.encrypt(text))
 
-def bfdc2(text, rq):
+'''
+	Decodes a game server json
+	:param str: String to decode
+	:param rq: Request id
+	:return: Decrypted string
+'''
+def gme_decode(text: str, rq: str) -> str:
 	akey = REQUESTS_KEYS[rq]
 	for i in range(len(akey), 16):
 		akey += b"\x00"
@@ -36,13 +58,16 @@ def bfdc2(text, rq):
 	cipher = AES.new(akey, AES.MODE_ECB)
 	return cipher.decrypt(base64.b64decode(text))
 
-def bfec2(text, rq):
+'''
+	Encodes a game server json
+	:param str: String to encode
+	:param rq: Request id
+	:return: Encrypted string
+'''
+def gme_encode(text: str, rq: str) -> str:
 	akey = REQUESTS_KEYS[rq]
 	for i in range(len(akey), 16):
 		akey += b"\x00"
 
 	cipher = AES.new(akey, AES.MODE_ECB)
 	return base64.b64encode(cipher.encrypt(text))
-
-if __name__ == "__main__":
-	print(bfdc(sys.argv[1]))
