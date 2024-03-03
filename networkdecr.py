@@ -19,7 +19,9 @@ REQUESTS_KEYS = {
 	"2o4axPIC" : b"EoYuZ2nbImhCU1c0",
 	"uYF93Mhc" : b"d0k6LGUu",
 	"ynB7X5P9" : b"7kH9NXwC",
-	"Uo86DcRh" : b"8JbxFvuSaB2CK7Ln"
+	"Uo86DcRh" : b"8JbxFvuSaB2CK7Ln",
+	"m2Ve9PkJ" : b"d7UuQsq8",
+	"jE6Sp0q4" : b"csiVLDKkxEwBfR70"
 }
 
 '''
