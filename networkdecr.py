@@ -11,17 +11,20 @@ import sys
 
 ''' GME Requests ID and their respective AES keys '''
 REQUESTS_KEYS = {
-	"MfZyu1q9" : b"EmcshnQoDr20TZz1",
-	"cTZ3W2JG" : b"ScJx6ywWEb0A3njT",
+	"MfZyu1q9" : b"EmcshnQoDr20TZz1", # initialize
+	"cTZ3W2JG" : b"ScJx6ywWEb0A3njT", # user info
 	"D74TYRf1" : b"e2k4s6jc",
-	"nJ3A7qFp" : b"bGxX67KB",
-	"NiYWKdzs" : b"f6uOewOD",
-	"2o4axPIC" : b"EoYuZ2nbImhCU1c0",
-	"uYF93Mhc" : b"d0k6LGUu",
-	"ynB7X5P9" : b"7kH9NXwC",
-	"Uo86DcRh" : b"8JbxFvuSaB2CK7Ln",
-	"m2Ve9PkJ" : b"d7UuQsq8",
-	"jE6Sp0q4" : b"csiVLDKkxEwBfR70" # mission start
+	"nJ3A7qFp" : b"bGxX67KB", # badge info
+	"NiYWKdzs" : b"f6uOewOD", # home info
+	"2o4axPIC" : b"EoYuZ2nbImhCU1c0", # friend get
+	"uYF93Mhc" : b"d0k6LGUu", # control center enter
+	"ynB7X5P9" : b"7kH9NXwC", # update info light
+	"Uo86DcRh" : b"8JbxFvuSaB2CK7Ln", # gacha list
+	"m2Ve9PkJ" : b"d7UuQsq8", # deck edit
+	"jE6Sp0q4" : b"csiVLDKkxEwBfR70", # mission start
+	"4aClzokO" : b"stI81haQ", # daily login request
+	"YPBU7MD8" : b"AKjzyZ81", # get achievement info
+	"YPBU7MD8" : b"6F9sMzBxEv8jXpau", # present list
 }
 
 '''
