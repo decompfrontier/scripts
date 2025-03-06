@@ -1,0 +1,202 @@
+import ida_idaapi
+import ida_bytes
+import ida_funcs
+import idautils
+import ida_nalt
+import ida_xref
+import ida_name
+import json
+import os
+import re
+import sys
+
+def is_cryptic_key(string):
+    """Filter strings to identify potential cryptic keys with an adjusted pattern."""
+    pattern = re.compile(r'^[a-zA-Z0-9]{4,13}$')
+    return bool(pattern.match(string)) and not string.isdigit()
+
+def infer_type_from_pattern(string):
+    """Infer type based on the key's pattern as a fallback."""
+    if re.match(r'^[a-z0-9]+$', string):
+        return "string", 0.8
+    elif re.match(r'^[0-9]+$', string):
+        return "number", 0.7
+    else:
+        return "string", 0.6
+
+def get_usage_context(ea, key_ea):
+    """Analyze how a key is used to infer its type with enhanced patterns."""
+    usage = []
+    for xref in idautils.XrefsFrom(key_ea, 0):
+        to_ea = xref.to
+        func = ida_funcs.get_func(to_ea)
+        if func:
+            func_name = ida_funcs.get_func_name(func.start_ea)
+            # Walk instructions in the function to find usage
+            for head in idautils.FuncItems(func.start_ea):
+                insn = idautils.DecodeInstruction(head)
+                if insn:
+                    mnemonic = insn.get_canon_mnem()
+                    operands = [ida_ua.print_operand(head, i) for i in range(insn.Op3)]
+                    print(f"Analyzing xref at {hex(head)}, mnemonic: {mnemonic}, operands: {operands}")
+                    sys.stdout.flush()
+                    if mnemonic in ["cmp", "test"]:
+                        usage.append("Used in comparison")
+                        # Check if comparing with an immediate (possible enum)
+                        for op in operands:
+                            if "#" in op:
+                                usage.append("Possible enum or number")
+                    elif mnemonic in ["add", "sub", "mul", "div"]:
+                        usage.append("Used in arithmetic")
+                    elif mnemonic in ["mov", "ldr"] and any(str(key_ea) in op for op in operands):
+                        usage.append("Loaded as value")
+                        if "atoi" in func_name.lower() or "parseInt" in func_name.lower():
+                            usage.append("Converted to integer")
+                    elif any("str" in op.lower() or "json" in op.lower() for op in operands) or \
+                         "str" in func_name.lower() or \
+                         "json" in func_name.lower() or \
+                         "response" in func_name.lower():
+                        usage.append("Passed to string/JSON function")
+                    elif "obj" in func_name.lower() or "data" in func_name.lower():
+                        usage.append("Possible object reference")
+    return usage
+
+def get_string_manually(ea, max_length=100):
+    """Manually read memory to extract a string as a fallback."""
+    data = bytearray()
+    for i in range(max_length):
+        byte = ida_bytes.get_byte(ea + i)
+        if byte == 0 or not 32 <= byte <= 126:
+            break
+        data.append(byte)
+    return bytes(data).decode(errors='ignore').strip() if data else None
+
+def analyze_all_strings():
+    """Analyze all strings and build a hierarchical key map."""
+    inferred_data = {
+        "keys": {},
+        "relationships": {}
+    }
+
+    print("Starting analysis with idautils.Strings()")
+    sys.stdout.flush()
+    processed_keys = set()
+    for string_item in idautils.Strings():
+        ea = string_item.ea
+        print(f"Processing string at {hex(ea)}")
+        sys.stdout.flush()
+        string_data = ida_bytes.get_strlit_contents(ea, None, ida_nalt.STRTYPE_C, 0)
+        if string_data:
+            decoded_string = string_data.decode(errors='ignore').strip()
+            print(f"Decoded string at {hex(ea)}: '{decoded_string}'")
+        else:
+            decoded_string = get_string_manually(ea)
+            print(f"Fallback decoded string at {hex(ea)}: '{decoded_string}'")
+        sys.stdout.flush()
+        if decoded_string and is_cryptic_key(decoded_string) and decoded_string not in processed_keys:
+            print(f"Found potential cryptic key: '{decoded_string}'")
+            sys.stdout.flush()
+            key_refs = []
+            inferred_type = "string"
+            confidence = 0.6
+            possible_values = []
+            xrefs_found = False
+            prefixed_name = ida_name.get_ea_name(ea)
+            if prefixed_name and prefixed_name.startswith('a'):
+                prefixed_string = prefixed_name[1:]
+                print(f"Prefixed name at {hex(ea)}: {prefixed_name}, actual string: {prefixed_string}")
+                sys.stdout.flush()
+            else:
+                prefixed_string = decoded_string
+
+            xrefs = idautils.XrefsTo(ea, 0)
+            for xref in xrefs:
+                xrefs_found = True
+                to_ea = xref.frm
+                func = ida_funcs.get_func(to_ea)
+                if func:
+                    func_name = ida_funcs.get_func_name(func.start_ea)
+                    usage = get_usage_context(to_ea, ea)
+                    print(f"Found xref from {hex(to_ea)} in function {func_name}, usage: {usage}")
+                    sys.stdout.flush()
+                    if usage:
+                        if "Passed to string/JSON function" in usage:
+                            inferred_type = "string"
+                            confidence = 0.9
+                            possible_values.append("string literal")
+                        elif "Used in arithmetic" in usage or "Converted to integer" in usage:
+                            inferred_type = "number"
+                            confidence = 0.85
+                            possible_values.append("integer value")
+                        elif "Possible enum or number" in usage:
+                            inferred_type = "string (possible enum)"
+                            confidence = 0.75
+                            possible_values.append("enum value")
+                        elif "Possible object reference" in usage:
+                            inferred_type = "object"
+                            confidence = 0.8
+                            possible_values.append("nested JSON object")
+                    elif "json" in func_name.lower() or "response" in func_name.lower():
+                        inferred_type = "string"
+                        confidence = 0.85
+                        possible_values.append("string literal")
+                    elif "id" in func_name.lower():
+                        inferred_type = "string (possible ID)"
+                        confidence = 0.75
+                        possible_values.append("ID string")
+                    key_refs.append({
+                        "address": hex(to_ea),
+                        "function": func_name,
+                        "inferred_type": inferred_type,
+                        "confidence": confidence,
+                        "usage_context": usage
+                    })
+                    # Enhanced nested key detection
+                    for nested_xref in idautils.XrefsFrom(to_ea, 0):
+                        nested_ea = nested_xref.to
+                        if nested_ea != ea and ida_bytes.is_loaded(nested_ea):
+                            nested_string = get_string_manually(nested_ea)
+                            if nested_string and is_cryptic_key(nested_string) and nested_string not in processed_keys:
+                                inferred_data["relationships"].setdefault(decoded_string, []).append({
+                                    "nested_key": nested_string,
+                                    "address": hex(nested_ea),
+                                    "function": func_name
+                                })
+                                print(f"Detected potential nested key: '{nested_string}' under '{decoded_string}' in {func_name}")
+                                sys.stdout.flush()
+
+            if not xrefs_found:
+                print(f"No valid xrefs found for {hex(ea)}, using pattern-based inference")
+                inferred_type, confidence = infer_type_from_pattern(decoded_string)
+                print(f"Pattern-based inference for '{decoded_string}': type={inferred_type}, confidence={confidence}")
+                sys.stdout.flush()
+            entry = {
+                "address": hex(ea),
+                "inferred_type": inferred_type,
+                "confidence": confidence,
+                "possible_values": possible_values,
+                "references": key_refs if key_refs else [{"note": "No references found"}]
+            }
+            inferred_data["keys"][decoded_string] = entry
+            processed_keys.add(decoded_string)
+
+    return inferred_data
+
+def main():
+    output_file = "inferred_keys.json"
+    if os.path.exists(output_file):
+        with open(output_file, "r") as f:
+            output = json.load(f)
+    else:
+        output = {}
+
+    inferred_data = analyze_all_strings()
+    output.update(inferred_data)
+
+    with open(output_file, "w") as f:
+        json.dump(output, f, indent=4)
+    print(f"Inferred keys written to {output_file}")
+    sys.stdout.flush()
+
+if __name__ == "__main__":
+    main()
