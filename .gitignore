@@ -1,3 +1,5 @@
 burp_exports
 __pycache__
 *.pyc
+*.json
+*.dat
